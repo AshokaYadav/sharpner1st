@@ -1,68 +1,98 @@
 const http = require("http");
 const fs = require("fs");
+const db = require("./config/db");
 
 const server = http.createServer((req, res) => {
   const url = req.url;
   const method = req.method;
 
-  // 🏠 Home route — show form + previous messages
+  // 🏠 Home page — show form + todos list
   if (url === "/") {
-    fs.readFile("message.txt", { encoding: "utf-8" }, (err, data) => {
-      const messages = data ? data.split("\n").filter(Boolean).reverse().join("<br>") : "";
+    db.query("SELECT * FROM todos", (err, results) => {
+      if (err) throw err;
 
-      res.setHeader("Content-Type", "text/html");
-      res.write(`
+      let todosHTML = results
+        .map(
+          (todo) => `
+            <li>
+              ${todo.id}. ${todo.task}
+              <form action="/delete" method="POST" style="display:inline;">
+                <input type="hidden" name="id" value="${todo.id}" />
+                <button type="submit">Delete</button>
+              </form>
+            </li>
+          `
+        )
+        .join("");
+
+      const html = `
         <html>
-          <head><title>Enter Message</title></head>
-          <body style="font-family: sans-serif; margin: 40px;">
-            <h2>Previous Messages:</h2>
-            <p>${messages || "No messages yet!"}</p>
-            <hr/>
-            <form action="/message" method="POST">
-              <input type="text" name="message" placeholder="Enter your message" required />
-              <button type="submit">Send</button>
-            </form>
-          </body>
+        <head><title>Todo List</title></head>
+        <body>
+          <h1>My Todo List</h1>
+          <form action="/add" method="POST">
+            <input type="text" name="task" placeholder="Enter a task" required />
+            <button type="submit">Add</button>
+          </form>
+          <ul>${todosHTML}</ul>
+        </body>
         </html>
-      `);
-      res.end();
+      `;
+
+      res.writeHead(200, { "Content-Type": "text/html" });
+      res.end(html);
     });
   }
 
-  // 📨 Handle form submit (POST request)
-  else if (url === "/message" && method === "POST") {
-    const body = [];
-
-    // 🔹 collect data chunks (Buffer)
+  // ➕ Add todo
+  else if (url === "/add" && method === "POST") {
+    let body = "";
     req.on("data", (chunk) => {
-      body.push(chunk);
+      body += chunk.toString();
     });
 
-    // 🔹 when all data received
     req.on("end", () => {
-      const parsedBody = Buffer.concat(body).toString();
-      const message = parsedBody.split("=")[1].replace(/\+/g, " ");
+      const params = new URLSearchParams(body);
+      const task = params.get("task");
 
-      // ✍️ Write message to file (append at bottom)
-      fs.appendFile("message.txt", message + "\n", (err) => {
-        if (err) console.log("Error writing file:", err);
+      db.query("INSERT INTO todos (task) VALUES (?)", [task], (err) => {
+        if (err) throw err;
+        res.writeHead(302, { Location: "/" });
+        res.end();
       });
-
-      // 🔁 Redirect back to home page
-      res.statusCode = 302;
-      res.setHeader("Location", "/");
-      res.end();
     });
   }
 
-  // ❌ Default route
+  // 🗑️ Delete todo
+  else if (url === "/delete" && method === "POST") {
+    let body = "";
+    req.on("data", (chunk) => {
+      body += chunk.toString();
+    });
+
+    req.on("end", () => {
+      const params = new URLSearchParams(body);
+      const id = params.get("id");
+
+      db.query("DELETE FROM todos WHERE id = ?", [id], (err) => {
+        if (err) throw err;
+        console.log(`🗑️ Deleted todo with id ${id}`);
+        res.writeHead(302, { Location: "/" });
+        res.end();
+      });
+    });
+  }
+
+  // ❌ Any other route
   else {
-    res.setHeader("Content-Type", "text/html");
-    res.write("<h1>404 Not Found</h1>");
-    res.end();
+    res.writeHead(404, { "Content-Type": "text/plain" });
+    res.end("404 Not Found");
   }
 });
 
 server.listen(3000, () => {
-  console.log("Server running at http://localhost:3000/");
+  console.log("🚀 Server running at http://localhost:3000");
 });
+
+
+
