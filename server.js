@@ -21,6 +21,13 @@ const server = http.createServer((req, res) => {
                 <button type="submit">Delete</button>
               </form>
             </li>
+             <li>
+              ${todo.id}. ${todo.task}
+              <form action="/delete" method="POST" style="display:inline;">
+                <input type="hidden" name="id" value="${todo.id}" />
+                <button type="submit">Delete</button>
+              </form>
+            </li>
           `
         )
         .join("");
